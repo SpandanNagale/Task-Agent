@@ -8,9 +8,9 @@ The goal is to show how much of a standard agent benchmark **local models plus g
 orchestration** can solve on a 12 GB consumer GPU, and at what cost per task. Success rates
 and cost per task will be published here as the phases land.
 
-> **Status: Phase 0 (foundations).** The model gateway, budgets, tracing and eval harness
-> work end to end. The agent doesn't use tools yet; those arrive in Phase 1. See the
-> [roadmap](docs/ROADMAP.md).
+> **Status: Phase 1 (single-agent baseline).** One tool-calling agent with web search, page
+> reading, a cloud code sandbox and Gmail, behind an approval gate. It runs entirely on
+> free tiers. See the [roadmap](docs/ROADMAP.md).
 
 ## Design principles
 
@@ -39,14 +39,37 @@ uv run task-agent run "What is 6 x 7?" --models config/models.mock.yaml
 uv run task-agent eval --models config/models.mock.yaml
 ```
 
-With real models:
+With real models and tools. Every service below has a free tier, and nothing runs on
+your machine except the CLI:
 
 ```bash
-cp .env.example .env          # add a key for at least one provider
-uv run task-agent models      # shows which models each role resolved to
-uv run task-agent run "How many days are there from 2024-01-15 to 2026-03-01?"
-uv run task-agent eval --tag smoke
+cp .env.example .env    # add CEREBRAS_API_KEY (or Groq / OpenRouter / Gemini),
+                        # TAVILY_API_KEY, E2B_API_KEY, and optionally COMPOSIO_API_KEY
+uv run task-agent models          # which models each role resolved to
+uv run task-agent tools           # which tools loaded, their side effects and approval rule
+uv run task-agent run "What is the sum of all primes below 1000?"
+uv run task-agent run "Find the arXiv id of 'Attention Is All You Need'"
+
+uv run task-agent connect gmail   # one-time OAuth through Composio
+uv run task-agent run "Draft an email to me summarising today's unread mail"
 ```
+
+Anything that writes to the outside world (sending, posting, deleting) stops and shows
+you the exact action. You can approve it, edit the arguments, or reject it. The rules are
+in [`policies/default.yaml`](policies/default.yaml).
+
+### Free-tier defaults
+
+| Piece | Default | Free tier |
+|---|---|---|
+| Planner model | `gpt-oss-120b` on Cerebras → Groq → OpenRouter → Ollama Cloud, then Gemini Flash | all free; one key is enough |
+| Web search | Tavily | 1,000 searches/month |
+| Page reading | Jina Reader (Firecrawl if you add a key) | free |
+| Code sandbox | E2B | $100 one-time credit |
+| Apps | Composio (Gmail first) | free tier |
+
+Per-task budget defaults: 20 steps, 300k tokens, 5 minutes, and $0.10. Free-tier calls are
+recorded as $0, and reports also show the paid list-price equivalent.
 
 ### Tracing with Langfuse (self-hosted)
 
@@ -66,7 +89,8 @@ Tracing is plain OpenTelemetry, so you can set `TASK_AGENT_TRACING=otlp` and
  you ─► CLI / API ─► Runner ─► ModelGateway (role → fallback chain, via LiteLLM)
                        │              │
                        │              └─► budgets: steps · cost · tokens · wall time
-                       ├─► ToolRegistry (MCP + Python tools, side-effect levels)   [phase 1]
+                       ├─► ToolExecutor ─► policy ─► approval gate ─► ToolRegistry
+                       │                     (search · read · sandbox · Gmail)
                        └─► OpenTelemetry trace per task ─► Langfuse / any OTLP backend
 ```
 
@@ -90,7 +114,9 @@ Tasks that need tool groups the current agent doesn't have are reported as *skip
 failed, so one suite serves every phase. See [evals/README.md](evals/README.md).
 
 ```bash
-uv run task-agent eval --category data_code --concurrency 8 --label "baseline qwen3-14b"
+uv run task-agent eval --label "baseline gpt-oss-120b"
+uv run task-agent eval --runner direct --label "no tools floor"
+uv run task-agent eval --gaia 1 --limit 20             # GAIA level 1 (needs HF_TOKEN)
 uv run task-agent eval --tag smoke --min-success 0.6   # non-zero exit below the bar
 ```
 

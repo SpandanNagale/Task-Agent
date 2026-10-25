@@ -51,10 +51,15 @@ class Metrics(BaseModel):
     skipped: int = 0
     success_rate: float | None = None  # passed / (total - skipped)
     cost_usd_total: float = 0.0
+    list_cost_usd_total: float = 0.0  # same usage at paid list prices
     cost_usd_mean: float | None = None
     steps_mean: float | None = None
     wall_s_mean: float | None = None
     wall_s_p95: float | None = None
+    tool_calls: int = 0
+    tool_error_rate: float | None = None
+    approvals_requested: int = 0
+    approvals_rejected: int = 0
 
 
 class EvalReport(BaseModel):
@@ -91,6 +96,7 @@ def summarise(outcomes: Sequence[TaskOutcome]) -> Metrics:
         costs = [r.usage.cost_usd for r in runs]
         walls = sorted(r.wall_s for r in runs)
         m.cost_usd_total = sum(costs)
+        m.list_cost_usd_total = sum(r.usage.list_cost_usd for r in runs)
         m.cost_usd_mean = statistics.fmean(costs)
         m.steps_mean = statistics.fmean(r.steps for r in runs)
         m.wall_s_mean = statistics.fmean(walls)

@@ -32,3 +32,15 @@ class BudgetExceeded(TaskAgentError):
 
 class ToolRegistryError(TaskAgentError):
     """Duplicate tool name, unknown tool, or an invalid tool spec."""
+
+
+class LoopDetected(TaskAgentError):
+    """The agent kept repeating the same action without progress."""
+
+
+class ToolError(TaskAgentError):
+    """A tool failed. The message is shown to the model, so keep it useful and secret-free."""
+
+
+class TransientToolError(ToolError):
+    """A failure worth retrying (timeouts, 429s, 5xx). Only read-only tools are retried."""

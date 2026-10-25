@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -41,6 +41,22 @@ class Completion(BaseModel):
     latency_s: float
 
 
+class ModelClient(Protocol):
+    """What runners need from a model backend. ``ModelGateway`` implements it; tests and
+    alternative backends can too."""
+
+    async def complete(
+        self,
+        role: str,
+        messages: list[Message],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        budget: BudgetTracker | None = None,
+        timeout_s: float | None = None,
+        **params: Any,
+    ) -> Completion: ...
+
+
 def _deployment(role: str, index: int) -> str:
     return f"{role}::{index}"
 
@@ -51,6 +67,9 @@ class ModelGateway:
 
         self.config = config
         self._roles = config.usable_roles()
+        self._free = {
+            entry.model for rc in self._roles.values() for entry in rc.chain if entry.free_tier
+        }
         model_list: list[dict[str, Any]] = []
         fallbacks: list[dict[str, list[str]]] = []
         for role, rc in self._roles.items():
@@ -137,7 +156,7 @@ class ModelGateway:
                 log.warning("model.call_failed", role=role, error=type(exc).__name__)
                 raise ModelError(f"role '{role}': all models failed: {exc}") from exc
 
-            completion = _to_completion(role, resp, time.perf_counter() - started)
+            completion = _to_completion(role, resp, time.perf_counter() - started, self._free)
             record_generation(
                 span,
                 model=completion.model,
@@ -162,7 +181,9 @@ class ModelGateway:
         return completion
 
 
-def _to_completion(role: str, resp: Any, latency_s: float) -> Completion:
+def _to_completion(
+    role: str, resp: Any, latency_s: float, free_models: set[str] | frozenset[str] = frozenset()
+) -> Completion:
     hidden: dict[str, Any] = getattr(resp, "_hidden_params", None) or {}
     choice = resp.choices[0]
     message = choice.message
@@ -181,16 +202,19 @@ def _to_completion(role: str, resp: Any, latency_s: float) -> Completion:
         tc.model_dump() if hasattr(tc, "model_dump") else dict(tc)
         for tc in (getattr(message, "tool_calls", None) or [])
     ]
+    model = hidden.get("litellm_model_name") or getattr(resp, "model", None) or "unknown"
+    list_cost = float(cost or 0.0)
     return Completion(
         role=role,
-        model=hidden.get("litellm_model_name") or getattr(resp, "model", None) or "unknown",
+        model=model,
         content=getattr(message, "content", None),
         tool_calls=tool_calls,
         finish_reason=getattr(choice, "finish_reason", None),
         usage=Usage(
             prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
             completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
-            cost_usd=float(cost or 0.0),
+            cost_usd=0.0 if model in free_models else list_cost,
+            list_cost_usd=list_cost,
             calls=1,
         ),
         latency_s=latency_s,

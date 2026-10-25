@@ -97,11 +97,12 @@ def test_cli_task_exports_full_trace_to_langfuse(receiver) -> None:
             for ss in rs.scope_spans:
                 spans.extend(ss.spans)
     by_name = {s.name: s for s in spans}
-    assert set(by_name) == {"task", "llm.planner"}
+    assert set(by_name) == {"task", "step.1", "llm.planner"}
 
-    root, gen = by_name["task"], by_name["llm.planner"]
-    assert gen.trace_id == root.trace_id
-    assert gen.parent_span_id == root.span_id
+    root, step, gen = by_name["task"], by_name["step.1"], by_name["llm.planner"]
+    assert gen.trace_id == step.trace_id == root.trace_id
+    assert step.parent_span_id == root.span_id
+    assert gen.parent_span_id == step.span_id
 
     root_attrs, gen_attrs = _attrs(root), _attrs(gen)
     assert root_attrs["langfuse.trace.input"] == "What is 6 x 7?"

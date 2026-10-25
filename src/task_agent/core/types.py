@@ -30,10 +30,13 @@ class Budget(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    max_steps: int | None = Field(default=25, ge=1)
-    max_cost_usd: float | None = Field(default=0.50, ge=0)
-    max_wall_s: float | None = Field(default=600.0, gt=0)
-    max_tokens: int | None = Field(default=None, ge=1)
+    # Defaults are sized for free-tier models: cost is ~0, so tokens and wall time are the
+    # limits that matter (free tiers cap tokens per minute/day). The cost cap is a guard in
+    # case a fallback lands on a paid model.
+    max_steps: int | None = Field(default=20, ge=1)
+    max_cost_usd: float | None = Field(default=0.10, ge=0)
+    max_wall_s: float | None = Field(default=300.0, gt=0)
+    max_tokens: int | None = Field(default=300_000, ge=1)
 
 
 class Usage(BaseModel):
@@ -41,7 +44,8 @@ class Usage(BaseModel):
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
-    cost_usd: float = 0.0
+    cost_usd: float = 0.0  # what was actually spent (free tiers count as 0)
+    list_cost_usd: float = 0.0  # the same usage at the provider's paid list price
     calls: int = 0
 
     @property
@@ -53,6 +57,7 @@ class Usage(BaseModel):
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,
             cost_usd=self.cost_usd + other.cost_usd,
+            list_cost_usd=self.list_cost_usd + other.list_cost_usd,
             calls=self.calls + other.calls,
         )
 
@@ -84,7 +89,8 @@ class TaskRequest(BaseModel):
     task_id: str = Field(default_factory=new_task_id)
     prompt: str = Field(min_length=1)
     budget: Budget = Field(default_factory=Budget)
-    allowed_tool_groups: frozenset[str] = frozenset()
+    # None: every tool group the runner has. A set narrows it (API key scopes, evals).
+    allowed_tool_groups: frozenset[str] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -97,6 +103,17 @@ class RunVersions(BaseModel):
     models: dict[str, str] = Field(default_factory=dict)  # role -> model actually served
 
 
+class ToolStats(BaseModel):
+    """Per-run tool accounting; feeds the tool-error-rate and approval metrics."""
+
+    calls: int = 0
+    errors: int = 0
+    approvals_requested: int = 0
+    approvals_edited: int = 0
+    approvals_rejected: int = 0
+    blocked_by_policy: int = 0
+
+
 class RunResult(BaseModel):
     task_id: str
     status: TaskStatus
@@ -104,6 +121,7 @@ class RunResult(BaseModel):
     raw_output: str | None = None  # full model text the answer was extracted from
     error: str | None = None
     usage: Usage = Field(default_factory=Usage)
+    tools: ToolStats = Field(default_factory=ToolStats)
     steps: int = 0
     wall_s: float = 0.0
     trace_id: str | None = None

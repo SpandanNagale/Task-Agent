@@ -5,7 +5,7 @@ built and tested locally. Phase 6 deploys only after the release checklist passe
 ends at a **gate** that must pass before the next one starts. A phase that misses its gate
 gets fixed before any new features start.
 
-## Phase 0: Foundations (current)
+## Phase 0: Foundations (done)
 
 - [x] Monorepo on uv, src layout, ruff, mypy (strict), pytest, pre-commit, CI
 - [x] Model gateway on LiteLLM with `planner`, `worker`, `router` and `judge` roles and fallback chains
@@ -17,13 +17,14 @@ gets fixed before any new features start.
 
 **Gate:** one task runs end to end and appears as a full trace.
 
-## Phase 1: Single-agent baseline
+## Phase 1: Single-agent baseline (current)
 
-- One tool-calling agent loop (plan, act, observe, replan) with step and cost budgets
-- Tools: Tavily (search), Firecrawl (read), Docker sandbox (code), Gmail (via Composio)
-- Approval gate: write/irreversible tools pause; policy file `policies/default.yaml`
-- Tool outputs tagged as untrusted data; repeated-action detection
-- Baseline runs on the internal suite and a GAIA level-1 subset
+- [x] One tool-calling agent loop (act, observe, repeat) with step, token, time and cost budgets
+- [x] Tools: Tavily (search), Jina Reader / Firecrawl (read), E2B cloud sandbox (code), Gmail via Composio
+- [x] Approval gate: write/irreversible tools pause for approve / edit / reject; policy file `policies/default.yaml`
+- [x] Tool outputs wrapped as untrusted data; repeated-action detection; read-only retries, no write retries
+- [x] GAIA loader and official scorer; tool-error and approval metrics in eval reports
+- [ ] Baseline runs on the internal suite and a GAIA level-1 subset, local-only and hybrid (needs keys)
 
 **Gate:** baseline success rate, cost and steps per task recorded, local-only and hybrid.
 
@@ -67,12 +68,15 @@ gets fixed before any new features start.
 
 Keel as the Spec Writer sub-agent, a managed container platform, media tools, scheduled tasks.
 
+## Decisions
+
+- [x] Planner: `gpt-oss-120b` on free tiers (Cerebras, Groq, OpenRouter, Ollama Cloud), Gemini Flash as last resort. Budget: $0/month; per-task limits of 20 steps, 300k tokens, 5 min
+- [x] Sandbox: E2B for v1 (free Hobby credit); a local Docker backend later behind the same interface
+- [x] Integrations: Composio first (Gmail); individual MCP servers later
+
 ## Open decisions
 
 - [ ] Project name (the package is `task_agent` for now)
-- [ ] Planner model and monthly API budget (sets per-task cost limits)
 - [ ] Local worker/router model (first candidate: Qwen3 14B on the RTX 5070)
-- [ ] Local Docker sandbox or E2B for v1
-- [ ] Composio or individual MCP servers for app integrations
 - [ ] Cloud provider and hosting budget for phase 6
 - [ ] Who can use the hosted API, and which tool groups the public demo allows

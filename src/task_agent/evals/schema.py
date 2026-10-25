@@ -18,6 +18,7 @@ class Category(StrEnum):
     DATA_CODE = "data_code"
     COMMUNICATION = "communication"
     MULTI_STEP = "multi_step"
+    GAIA = "gaia"  # public benchmark tasks, loaded at run time (never committed)
 
 
 class _Checker(BaseModel):
@@ -80,8 +81,22 @@ class LLMJudgeChecker(_Checker):
     role: str = "judge"
 
 
+class GaiaChecker(_Checker):
+    """GAIA's official scoring: numbers compared as numbers, comma/semicolon lists compared
+    element by element, strings compared ignoring case, spaces and punctuation."""
+
+    type: Literal["gaia"] = "gaia"
+    expected: str
+
+
 Checker = Annotated[
-    ExactChecker | OneOfChecker | ContainsChecker | RegexChecker | NumericChecker | LLMJudgeChecker,
+    ExactChecker
+    | OneOfChecker
+    | ContainsChecker
+    | RegexChecker
+    | NumericChecker
+    | LLMJudgeChecker
+    | GaiaChecker,
     Field(discriminator="type"),
 ]
 

@@ -1,0 +1,25 @@
+# Approval policy: what may run without asking a human.
+#
+#   allow  run without asking
+#   ask    pause and show the exact action: approve, edit the arguments, or reject
+#   deny   never run
+#
+# A rule under `tools` beats the default for the tool's side-effect level.
+# `irreversible` can never default to `allow`; allow individual tools if you must.
+
+defaults:
+  read: allow
+  write: ask
+  irreversible: ask
+
+tools:
+  # Code runs in a throwaway E2B sandbox with no access to your machine or accounts,
+  # so the agent may run it freely. Its effects die with the sandbox.
+  run_python: allow
+
+  # Drafts sit in your Gmail drafts folder until you send them yourself.
+  gmail_create_email_draft: ask
+
+  # Examples:
+  # gmail_send_email: deny        # never send email, drafts only
+  # gmail_fetch_emails: ask       # ask even before reading mail

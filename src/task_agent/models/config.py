@@ -55,10 +55,12 @@ class ModelEntry(BaseModel):
 
     model: str = Field(min_length=1)
     name: str | None = None
+    # Served on a free tier: actual cost is recorded as $0 (the list price is still tracked
+    # as list_cost_usd, so reports can show what the run would cost on a paid plan).
+    free_tier: bool = False
 
     def litellm_params(self) -> dict[str, Any]:
-        params = self.model_dump(exclude={"name"}, exclude_none=True)
-        return params
+        return self.model_dump(exclude={"name", "free_tier"}, exclude_none=True)
 
 
 class RoleConfig(BaseModel):
