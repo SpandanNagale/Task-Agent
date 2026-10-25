@@ -1,0 +1,35 @@
+tasks:
+  - id: data-001
+    category: data_code
+    prompt: What is the sum of all prime numbers below 1000? Answer with the number only.
+    checker: { type: numeric, expected: 76127 }
+    requires: [code]
+    notes: Easy to compute, easy to hallucinate; the code tool should make this reliable.
+
+  - id: data-002
+    category: data_code
+    prompt: |
+      Here is a CSV:
+
+      region,units,unit_price
+      North,10,2.50
+      South,4,10.00
+      South,3,7.50
+      East,8,1.25
+
+      Revenue is units times unit_price. What is the total revenue for the South region? Answer with a number.
+    checker: { type: numeric, expected: 62.5, abs_tol: 0.001 }
+    tags: [smoke]
+
+  - id: data-003
+    category: data_code
+    prompt: How many days are there from 2024-01-15 to 2026-03-01 (the difference between the two dates)? Answer with a number.
+    checker: { type: numeric, expected: 776 }
+    tags: [smoke]
+    notes: Crosses a leap day (2024-02-29).
+
+  - id: data-004
+    category: data_code
+    prompt: With F(1) = F(2) = 1, what is the 50th Fibonacci number F(50)? Answer with the number only.
+    checker: { type: numeric, expected: 12586269025 }
+    requires: [code]

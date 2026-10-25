@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Secrets: never commit these
+.env
+.env.*
+!.env.example
+
+# Eval output (commit curated results under evals/reports/published/ instead)
+evals/reports/runs/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

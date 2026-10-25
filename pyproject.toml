@@ -1,0 +1,96 @@
+[project]
+name = "task-agent"
+version = "0.1.0"
+description = "Hand it any task in plain language; it plans, picks tools and workers, and carries the task to a verified result."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Spandan Nagale" }]
+keywords = ["agents", "llm", "langgraph", "mcp", "automation", "evals"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "litellm>=1.80,<2",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6,<3",
+    "pyyaml>=6.0",
+    "structlog>=24.4",
+    "typer>=0.15",
+    "opentelemetry-api>=1.30",
+    "opentelemetry-sdk>=1.30",
+    "opentelemetry-exporter-otlp-proto-http>=1.30",
+]
+
+[project.urls]
+Homepage = "https://github.com/SpandanNagale/Task-Agent"
+Issues = "https://github.com/SpandanNagale/Task-Agent/issues"
+
+[project.scripts]
+task-agent = "task_agent.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-pyyaml",
+    "pre-commit>=4.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/task_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "ASYNC", "S", "PT", "TID"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B011"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["task_agent"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["litellm", "litellm.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: needs live services (docker compose, model keys); skipped by default",
+]
+
+[tool.coverage.run]
+source = ["task_agent"]
+branch = true

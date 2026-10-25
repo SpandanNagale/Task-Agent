@@ -1,0 +1,27 @@
+tasks:
+  - id: research-001
+    category: research
+    prompt: In what year was the first public release of the Python programming language (version 0.9.0)? Answer with the year only.
+    checker: { type: exact, expected: "1991" }
+    tags: [smoke, knowledge]
+    notes: Stable fact a model should know; floor check for the direct runner.
+
+  - id: research-002
+    category: research
+    prompt: Which physicist was the founding director of the Raman Research Institute in Bengaluru? Give the full name.
+    checker: { type: contains, any_of: ["C. V. Raman", "C.V. Raman", "Chandrasekhara Venkata Raman", "CV Raman"] }
+    tags: [smoke, knowledge]
+
+  - id: research-003
+    category: research
+    prompt: What is the arXiv identifier of the paper "Attention Is All You Need"? Answer with the identifier only, for example 1234.56789.
+    checker: { type: regex, pattern: "1706\\.03762" }
+    requires: [search]
+    notes: Exact identifier; models often half-remember it, so search should beat recall.
+
+  - id: research-004
+    category: research
+    prompt: According to the English Wikipedia article on Lake Titicaca, what is the lake's surface elevation in metres? Answer with a number.
+    checker: { type: numeric, expected: 3812, abs_tol: 15 }
+    requires: [search]
+    tags: [citation]

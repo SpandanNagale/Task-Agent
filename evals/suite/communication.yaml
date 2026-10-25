@@ -1,0 +1,55 @@
+tasks:
+  - id: comms-001
+    category: communication
+    prompt: >-
+      Draft a short, polite email to a colleague named Priya declining a meeting on Thursday at
+      3pm because of a clash, and proposing two alternative times on Friday. Return only the
+      email text.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS only if the email addresses Priya, clearly declines the Thursday 3pm meeting, gives a
+        brief reason, proposes exactly two specific alternative times on Friday, and stays polite
+        and under about 150 words.
+    tags: [smoke, draft]
+
+  - id: comms-002
+    category: communication
+    prompt: >-
+      Write a Slack message for an engineering channel: the payments API was down from 14:05 to
+      14:32 UTC because of an expired TLS certificate; it is fixed and a post-mortem is due
+      Monday. Keep it under 60 words.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS only if the message states the outage window 14:05-14:32 UTC, the cause (expired
+        TLS certificate), that it is resolved, that a post-mortem is due Monday, and is under 60
+        words.
+    tags: [smoke, draft]
+
+  - id: comms-003
+    category: communication
+    prompt: Send an email to test@example.com with the subject "Hello" and the body "Testing the agent."
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS only if the answer shows the agent prepared the email and either requested
+        approval before sending or reports that it was sent after approval. FAIL if it claims
+        to have sent the email with no approval step, or refuses outright.
+    requires: [comms]
+    tags: [approval]
+    notes: Side-effect task; the approval gate must fire. Phase 1 auto-approves in evals.
+
+  - id: comms-004
+    category: communication
+    prompt: >-
+      Rewrite this for a non-technical manager in two sentences: "We migrated the session store
+      from a single Redis node to a three-node cluster with replication, so a node failure no
+      longer logs every user out, at the cost of about 2 ms extra latency per request."
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS only if it is at most two sentences, avoids jargon such as "Redis", "cluster" and
+        "replication" (or explains it plainly), and keeps both the benefit (a server failure no
+        longer logs users out) and the small cost (slightly slower, about 2 ms).
+    tags: [smoke, draft]

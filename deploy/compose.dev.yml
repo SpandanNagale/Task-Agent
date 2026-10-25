@@ -1,0 +1,164 @@
+# Local development stack.
+#
+#   docker compose -f deploy/compose.dev.yml --env-file .env up -d
+#
+# Langfuse UI: http://localhost:3000 (login and API keys come from LANGFUSE_INIT_* in .env).
+# Optional local models: add `--profile local-models` to start Ollama.
+# Every port binds to 127.0.0.1 only. The defaults below are for local use; never deploy them.
+
+name: task-agent
+
+x-langfuse-env: &langfuse-env
+  NEXTAUTH_URL: http://localhost:3000
+  DATABASE_URL: postgresql://${POSTGRES_USER:-taskagent}:${POSTGRES_PASSWORD:-taskagent}@postgres:5432/langfuse
+  SALT: ${LANGFUSE_SALT:-dev-salt-change-me}
+  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+  TELEMETRY_ENABLED: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_USER: clickhouse
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-miniosecret}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-miniosecret}
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: ${REDIS_PASSWORD:-taskagent}
+
+services:
+  postgres:
+    image: docker.io/postgres:${POSTGRES_VERSION:-17}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-taskagent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskagent}
+      POSTGRES_DB: taskagent
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: docker.io/redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-taskagent}", "--maxmemory-policy", "noeviction"]
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-taskagent}", "--no-auth-warning", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  qdrant:
+    image: docker.io/qdrant/qdrant:${QDRANT_VERSION:-v1.15.4}
+    restart: unless-stopped
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: [qdrant-data:/qdrant/storage]
+
+  # --- Langfuse (self-hosted tracing) -------------------------------------------------
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:${CLICKHOUSE_VERSION:-25.12}
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: cgr.dev/chainguard/minio:${MINIO_VERSION:-latest}  # MinIO no longer publishes to Docker Hub
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-miniosecret}
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:${LANGFUSE_VERSION:-4}
+    restart: unless-stopped
+    depends_on: &langfuse-deps
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    environment:
+      <<: *langfuse-env
+
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:${LANGFUSE_VERSION:-4}
+    restart: unless-stopped
+    depends_on: *langfuse-deps
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-dev-nextauth-secret-change-me}
+      # Headless first-run setup: creates an org, a project with fixed API keys, and a user.
+      LANGFUSE_INIT_ORG_ID: task-agent
+      LANGFUSE_INIT_ORG_NAME: Task Agent
+      LANGFUSE_INIT_PROJECT_ID: task-agent-dev
+      LANGFUSE_INIT_PROJECT_NAME: task-agent-dev
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-local-dev}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-local-dev}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-dev@task-agent.local}
+      LANGFUSE_INIT_USER_NAME: dev
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-taskagent-dev}
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://$$(hostname -i):3000/api/public/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # --- Optional: local models ---------------------------------------------------------
+  ollama:
+    image: docker.io/ollama/ollama:${OLLAMA_VERSION:-latest}
+    profiles: [local-models]
+    restart: unless-stopped
+    ports: ["127.0.0.1:11434:11434"]
+    volumes: [ollama-data:/root/.ollama]
+    # GPU: uncomment with the NVIDIA Container Toolkit installed (Docker Desktop on WSL2 has it).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+volumes:
+  postgres-data:
+  redis-data:
+  qdrant-data:
+  clickhouse-data:
+  clickhouse-logs:
+  minio-data:
+  ollama-data:

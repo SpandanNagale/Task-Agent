@@ -1,0 +1,23 @@
+# Offline config for tests, CI and first-run demos: no keys, no network, deterministic.
+# Every role answers with a canned response through LiteLLM's mock_response.
+defaults:
+  timeout_s: 10
+  num_retries: 0
+
+roles:
+  planner:
+    chain:
+      - name: mock
+        model: openai/mock-planner
+        api_key: mock
+        mock_response: "This is a mock model, so I can't really solve it.\nFINAL ANSWER: 42"
+  worker:
+    alias: planner
+  router:
+    alias: planner
+  judge:
+    chain:
+      - name: mock-judge
+        model: openai/mock-judge
+        api_key: mock
+        mock_response: "Mock judge.\nFAIL"

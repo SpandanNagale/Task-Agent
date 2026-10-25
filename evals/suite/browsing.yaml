@@ -1,0 +1,30 @@
+tasks:
+  - id: browse-001
+    category: browsing
+    prompt: Open https://example.com and report the exact text of the page's main heading.
+    checker: { type: exact, expected: "Example Domain" }
+    requires: [browser]
+    tags: [smoke-browser]
+
+  - id: browse-002
+    category: browsing
+    prompt: Visit https://www.iana.org/help/example-domains and report the number of the RFC that reserves example.com for documentation. Answer with the number only.
+    checker: { type: regex, pattern: "\\b2606\\b" }
+    requires: [browser]
+
+  - id: browse-003
+    category: browsing
+    prompt: On the English Wikipedia page for the Python programming language, who is listed as "Designed by" in the infobox?
+    checker: { type: contains, all_of: ["Guido van Rossum"] }
+    requires: [browser]
+
+  - id: browse-004
+    category: browsing
+    prompt: >-
+      Go to https://httpbin.org/forms/post, fill in the customer name "Ada Lovelace", choose pizza
+      size "Medium" and the topping "Cheese", then submit the form. Report the value of "custname"
+      shown in the response.
+    checker: { type: exact, expected: "Ada Lovelace" }
+    requires: [browser]
+    tags: [form]
+    notes: A harmless public test form; exercises type, select, click and read-back.

@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --frozen
+      - run: uv run pytest --cov --cov-report=term-missing
+
+  eval-smoke:
+    # Offline: mock models, no keys. Proves the suite loads and the harness runs end to end.
+    # Real-model eval runs need provider keys and are triggered manually (see evals/README.md).
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run task-agent eval --models config/models.mock.yaml --label ci-smoke --out evals/reports/runs
+        env:
+          TASK_AGENT_TRACING: "off"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-smoke-report
+          path: evals/reports/runs/
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          push: false
+          load: true
+          tags: task-agent:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: docker run --rm task-agent:ci version
+      - run: docker run --rm -e TASK_AGENT_TRACING=off task-agent:ci run "What is 6 x 7?" --models config/models.mock.yaml

@@ -1,0 +1,35 @@
+tasks:
+  - id: multi-001
+    category: multi_step
+    prompt: >-
+      Find the arXiv identifier of the paper "Attention Is All You Need", then add up all the
+      digits in that identifier. Answer with the sum only.
+    checker: { type: numeric, expected: 32 }
+    requires: [search]
+    notes: Lookup then arithmetic (1706.03762 -> 32).
+
+  - id: multi-002
+    category: multi_step
+    prompt: >-
+      A train leaves at 09:40 and arrives at 13:15 the same day. It stopped at one station for
+      25 minutes on the way. For how many minutes was the train moving? Answer with a number.
+    checker: { type: numeric, expected: 190 }
+    tags: [smoke]
+
+  - id: multi-003
+    category: multi_step
+    prompt: >-
+      Create a CSV file named squares.csv with columns n and n_squared for n from 1 to 10, then
+      report the sum of the n_squared column.
+    checker: { type: numeric, expected: 385 }
+    requires: [code]
+    tags: [files]
+
+  - id: multi-004
+    category: multi_step
+    prompt: >-
+      You have $120. Item A costs $35, B costs $47, C costs $28 and D costs $52. Which two items
+      together cost the closest to $100 without going over $120? Answer with the two letters.
+    checker: { type: regex, pattern: "^\\W*(B\\W*(and|,|&|\\+)?\\W*D|D\\W*(and|,|&|\\+)?\\W*B)\\W*$" }
+    tags: [smoke]
+    notes: B + D = 99.
