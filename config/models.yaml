@@ -2,58 +2,85 @@
 #
 # Each chain entry is passed to LiteLLM (any LiteLLM param works: api_base, max_tokens, ...).
 # ${VAR} reads the environment; ${VAR:-default} supplies a fallback. An entry that needs an
-# unset variable is skipped, so you only need keys for the providers you actually use.
+# unset variable is skipped, so you only need a key for ONE provider to get started.
 # Run `task-agent models` to see what resolved.
 #
-# Model ids change fast: check each provider's current catalogue and update freely.
+# Default setup: free tiers only.
+#   planner = gpt-oss-120b (OpenAI open weights, Apache-2.0): strong reasoning, native tool
+#   calling, and free on several providers. When one free quota runs out the router falls
+#   to the next provider serving the SAME model, so results stay comparable across runs.
+#   Gemini Flash is the last resort (different model, generous free tier).
+#
+# `free_tier: true` records actual cost as $0 while still tracking the list price
+# (list_cost_usd). Remove it for any provider you pay for, so budgets see real spend.
+#
+# Free tiers change often: check each provider's current limits and model ids.
 
 defaults:
-  timeout_s: 60
+  timeout_s: 90
   num_retries: 1   # per model, before falling through to the next entry
-  cooldown_s: 30   # skip a model this long after repeated failures
+  cooldown_s: 60   # skip a provider this long after it rate-limits us
 
 roles:
   planner:
-    description: Writes and revises plans. Use the strongest model you can afford.
+    description: Drives the agent loop and writes plans. The strongest model you can get.
     timeout_s: 180
     params: { temperature: 0.2 }
     chain:
-      - name: ollama-cloud
+      - name: cerebras-gpt-oss-120b      # free: high tokens/day, very fast
+        free_tier: true
+        model: cerebras/${PLANNER_CEREBRAS_MODEL:-gpt-oss-120b}
+        api_key: ${CEREBRAS_API_KEY}
+      - name: groq-gpt-oss-120b          # free: low tokens/minute, fast
+        free_tier: true
+        model: groq/${PLANNER_GROQ_MODEL:-openai/gpt-oss-120b}
+        api_key: ${GROQ_API_KEY}
+      - name: openrouter-gpt-oss-120b    # free: ~50 requests/day without credit
+        free_tier: true
+        model: openrouter/${PLANNER_OPENROUTER_MODEL:-openai/gpt-oss-120b:free}
+        api_key: ${OPENROUTER_API_KEY}
+      - name: ollama-cloud-gpt-oss-120b  # free: light usage
+        free_tier: true
         model: ollama_chat/${PLANNER_OLLAMA_CLOUD_MODEL:-gpt-oss:120b}
         api_base: https://ollama.com
         api_key: ${OLLAMA_API_KEY}
-      - name: openrouter
-        model: openrouter/${PLANNER_OPENROUTER_MODEL:-qwen/qwen3-235b-a22b-2507}
-        api_key: ${OPENROUTER_API_KEY}
-      - name: gemini
+      - name: gemini-flash               # free tier, different model family
+        free_tier: true
         model: gemini/${PLANNER_GEMINI_MODEL:-gemini-2.5-flash}
         api_key: ${GEMINI_API_KEY}
-      - name: groq
-        model: groq/${PLANNER_GROQ_MODEL:-llama-3.3-70b-versatile}
-        api_key: ${GROQ_API_KEY}
 
   worker:
-    description: Executes individual steps. Local 7-14B model first, hosted fallback.
+    description: Cheap steps and sub-agents. Local model first when you have a GPU.
     timeout_s: 120
     params: { temperature: 0.2 }
     chain:
       - name: ollama-local
         model: ollama_chat/${WORKER_LOCAL_MODEL:-qwen3:14b}
         api_base: ${OLLAMA_BASE_URL}
-      - name: ollama-cloud
+      - name: groq-gpt-oss-20b
+        free_tier: true
+        model: groq/${WORKER_GROQ_MODEL:-openai/gpt-oss-20b}
+        api_key: ${GROQ_API_KEY}
+      - name: cerebras-gpt-oss-120b
+        free_tier: true
+        model: cerebras/${WORKER_CEREBRAS_MODEL:-gpt-oss-120b}
+        api_key: ${CEREBRAS_API_KEY}
+      - name: ollama-cloud-gpt-oss-20b
+        free_tier: true
         model: ollama_chat/${WORKER_OLLAMA_CLOUD_MODEL:-gpt-oss:20b}
         api_base: https://ollama.com
         api_key: ${OLLAMA_API_KEY}
-      - name: groq
-        model: groq/${WORKER_GROQ_MODEL:-llama-3.1-8b-instant}
-        api_key: ${GROQ_API_KEY}
+      - name: gemini-flash-lite
+        free_tier: true
+        model: gemini/${WORKER_GEMINI_MODEL:-gemini-2.5-flash-lite}
+        api_key: ${GEMINI_API_KEY}
 
   router:
-    description: Cheap, fast classification (tool-group routing, yes/no checks).
+    description: Fast classification (tool-group routing, yes/no checks).
     alias: worker
     params: { temperature: 0 }
 
   judge:
-    description: Grades eval answers against rubrics. Keep it fixed between runs you compare.
+    description: Grades eval answers. Keep it fixed between runs you compare.
     alias: planner
     params: { temperature: 0 }

@@ -93,3 +93,18 @@ def test_describe(mock_gateway: ModelGateway) -> None:
     info = mock_gateway.describe()
     assert info["planner"]["chain"] == ["mock"]
     assert mock_gateway.roles == ["judge", "planner", "router", "worker"]
+
+
+async def test_free_tier_costs_zero_but_keeps_list_price() -> None:
+    def gw(free: bool) -> ModelGateway:
+        entry = {"model": "openai/gpt-4o-mini", "api_key": "x", "mock_response": "hi"}
+        if free:
+            entry["free_tier"] = True
+        return ModelGateway(parse_gateway_config({"roles": {"planner": {"chain": [entry]}}}))
+
+    paid = await gw(False).complete("planner", MSGS)
+    free = await gw(True).complete("planner", MSGS)
+    assert paid.usage.cost_usd > 0
+    assert paid.usage.list_cost_usd == paid.usage.cost_usd
+    assert free.usage.cost_usd == 0
+    assert free.usage.list_cost_usd == paid.usage.list_cost_usd

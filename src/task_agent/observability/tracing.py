@@ -173,6 +173,27 @@ def generation_span(role: str, messages: list[dict[str, Any]]) -> Iterator[Span]
         yield span
 
 
+@contextmanager
+def tool_span(name: str, side_effect: str, args: Any) -> Iterator[Span]:
+    """Child span for one tool call."""
+    with tracer().start_as_current_span(f"tool.{name}", record_exception=False) as span:
+        span.set_attribute("langfuse.observation.type", "tool")
+        span.set_attribute("gen_ai.operation.name", "execute_tool")
+        span.set_attribute("gen_ai.tool.name", name)
+        span.set_attribute("task_agent.side_effect", side_effect)
+        set_io(span, input=args)
+        yield span
+
+
+@contextmanager
+def step_span(step: int) -> Iterator[Span]:
+    """Groups one think-act cycle: a model call and the tool calls it makes."""
+    with tracer().start_as_current_span(f"step.{step}", record_exception=False) as span:
+        span.set_attribute("langfuse.observation.type", "span")
+        span.set_attribute("task_agent.step", step)
+        yield span
+
+
 def record_generation(
     span: Span,
     *,

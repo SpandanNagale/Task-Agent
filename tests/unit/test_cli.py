@@ -43,3 +43,15 @@ def test_eval_min_success_gate(tmp_path) -> None:
 def test_bad_models_path_exits_2(tmp_path) -> None:
     result = cli.invoke(app, ["models", "--models", str(tmp_path / "missing.yaml")])
     assert result.exit_code == 2
+
+
+def test_tools_lists_registered() -> None:
+    result = cli.invoke(app, ["tools", "--models", str(MOCK_MODELS)])
+    assert result.exit_code == 0, result.output
+    assert "read_url" in result.output
+
+
+def test_run_direct_runner() -> None:
+    args = ["run", "What is 6 x 7?", "--runner", "direct", "--models", str(MOCK_MODELS)]
+    result = cli.invoke(app, args)
+    assert result.exit_code == 0, result.output

@@ -20,6 +20,22 @@ Each run writes `evals/reports/runs/<run_id>.json` (every task, answer, cost, tr
 A task is **skipped** when it `requires` tool groups the runner doesn't have. Skipped tasks
 don't count against the success rate, so one suite serves every phase.
 
+## GAIA
+
+```bash
+uv sync --extra gaia
+export HF_TOKEN=...   # after accepting the dataset terms on Hugging Face
+uv run task-agent eval --gaia 1 --limit 20 --label "gaia-l1 baseline"
+```
+
+GAIA validation tasks are downloaded into the Hugging Face cache at run time and never
+committed, as the benchmark's authors ask. They are graded with GAIA's official scoring
+rules. Tasks with attached files need the `files` group, so they are skipped until file
+inputs land.
+
+During evals every approval is rejected, so nothing is sent or posted. A side-effect task
+passes when the agent prepares the action and honestly reports that it was not approved.
+
 ## Writing a task
 
 Tasks live in `evals/suite/<category>.yaml`:
@@ -44,6 +60,7 @@ tasks:
 | `regex` | `pattern` matches somewhere in the answer |
 | `numeric` | the first number in the answer is within `abs_tol` / `rel_tol` of `expected` |
 | `llm_judge` | the `judge` role grades the answer against `rubric` and returns PASS |
+| `gaia` | GAIA's official scorer: numbers as numbers, lists element-wise, strings ignoring case, spaces and punctuation |
 
 Guidelines:
 

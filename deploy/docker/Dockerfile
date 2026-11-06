@@ -12,16 +12,17 @@ WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-dev --no-install-project --all-extras
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-editable
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-editable --all-extras
 
 FROM python:${PYTHON_VERSION}-slim AS runtime
 RUN groupadd --system app && useradd --system --gid app --home /app app
 WORKDIR /app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app config ./config
+COPY --chown=app:app policies ./policies
 COPY --chown=app:app evals/suite ./evals/suite
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

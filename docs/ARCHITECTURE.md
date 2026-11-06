@@ -47,7 +47,7 @@ Phases replace the implementation:
 | Phase | Runner | What it does |
 |---|---|---|
 | 0 | `DirectRunner` | one model call, no tools; proves the plumbing and sets a "no tools" floor |
-| 1 | `BaselineRunner` | single tool-calling agent loop with approval gate |
+| 1 | `BaselineRunner` | single tool-calling agent loop with approval gate (current) |
 | 2 | `OrchestratorRunner` | LangGraph planner/replanner with sub-agents, kept only where it beats the baseline |
 
 Runners are stateless across tasks: everything a run needs comes in the request or from
@@ -72,13 +72,60 @@ time. A hit raises `BudgetExceeded`, and the runner turns that into a
   own parameters.
 - Under the hood this is a LiteLLM `Router`: per-model retries, cooldown of failing
   deployments, and fallbacks down the chain.
+- `free_tier: true` on an entry records actual cost as $0 and keeps the paid list price in
+  `list_cost_usd`, so budgets reflect real spend and reports can still show the
+  paid-plan equivalent.
+- LiteLLM's bundled price map is used instead of fetching one at import, so there's no
+  network call at startup and cost numbers stay fixed per LiteLLM version.
+
+### `core/baseline.py`: the Phase 1 agent
+
+A plain loop with no framework: the model sees the task and the tools for its allowed
+groups. It calls tools, reads their results, and stops when it answers without a tool call.
+Guards:
+
+- On the last allowed step, tools are withdrawn so the model must answer.
+- An identical call (same tool, same arguments) is warned about on its 3rd repeat. The 4th
+  repeat stops the task with `LoopDetected`.
+- An empty reply gets one nudge, then the task fails.
+- Per-task resources (the sandbox) are always torn down in `finally`.
+
+### `core/tool_executor.py` and `core/approval.py`: the only path to a side effect
+
+Every tool call from a model goes through `ToolExecutor`:
+
+1. **Validate.** Unknown tool, disallowed group, bad JSON or missing required fields come
+   back to the model as an `ERROR:` message it can fix, never as a crash.
+2. **Policy.** `policies/default.yaml` maps each tool, or each side-effect level, to
+   `allow`, `ask` or `deny`. `irreversible` can never default to `allow`.
+3. **Approval.** `ask` goes to an `Approver`: `ConsoleApprover` in the CLI, and `RejectAll`
+   in evals and non-interactive runs. An edit replaces the arguments.
+4. **Run.** Each call runs under the tool's timeout. Read-only tools retry transient
+   failures (429, 5xx, network) with exponential backoff and jitter. Tools with side
+   effects never retry, so nothing is sent twice.
+5. **Return.** Output is size-capped and wrapped in
+   `<tool_output trust="untrusted">…</tool_output>`, with closing tags escaped so content
+   can't break out. The system prompt tells the model never to follow instructions found
+   inside.
+
+`ToolStats` on every `RunResult` counts calls, errors, approvals requested, edited and
+rejected, and policy blocks. These feed the tool-error-rate and approval metrics.
 
 ### `tools/`: tool contract
 
 `ToolSpec` is the one schema for every capability: name, description, group, input JSON
-schema, and side-effect level (`read`, `write`, `irreversible`). The side-effect level drives
-the approval gate. Phase 0 ships the contract and an in-memory registry. Phase 1 adds the
-first tools, MCP loading and invocation through the gate.
+schema, timeout, and side-effect level (`read`, `write`, `irreversible`). Handlers are
+`async (args, ctx) -> ToolOutput`. `ToolContext` gives each task lazily created resources
+(the sandbox) that are torn down when the task ends.
+
+`tools/loader.py` registers a tool only if its key is present:
+
+| Tool | Group | Side effect | Backend |
+|---|---|---|---|
+| `web_search` | search | read | Tavily |
+| `read_url` | search | read | Firecrawl, falling back to Jina Reader (no key needed) |
+| `run_python` | code | write (sandbox only) | E2B, one sandbox per task, internet off by default |
+| `gmail_*` | comms | read / write / irreversible | Composio, with side effects from a curated table, then Composio's hints, then `irreversible` |
 
 Write the description as one sentence on what the tool does and one on when *not* to use it.
 The model picks tools by reading these descriptions.

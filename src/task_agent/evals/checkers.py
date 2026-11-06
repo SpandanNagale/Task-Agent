@@ -13,6 +13,7 @@ from task_agent.evals.schema import (
     ContainsChecker,
     EvalTask,
     ExactChecker,
+    GaiaChecker,
     LLMJudgeChecker,
     NumericChecker,
     OneOfChecker,
@@ -91,9 +92,50 @@ def check_static(checker: Checker, answer: str) -> CheckResult:
                 number, checker.expected, rel_tol=checker.rel_tol, abs_tol=checker.abs_tol
             )
             return CheckResult(passed=ok, detail=f"got {number}, expected {checker.expected}")
+        case GaiaChecker():
+            ok = gaia_score(answer, checker.expected)
+            return CheckResult(passed=ok, detail=f"expected {checker.expected!r}")
         case LLMJudgeChecker():
             raise TypeError("llm_judge needs a gateway; call check()")
     raise TypeError(f"unknown checker {checker!r}")  # pragma: no cover
+
+
+# --- GAIA scorer, following the benchmark's reference implementation --------------------
+
+
+def _gaia_number(text: str) -> float | None:
+    for ch in ("$", "%", ","):
+        text = text.replace(ch, "")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _gaia_str(text: str, *, remove_punct: bool = True) -> str:
+    text = re.sub(r"\s", "", text)
+    if remove_punct:
+        text = text.translate(str.maketrans("", "", string.punctuation))
+    return text.lower()
+
+
+def gaia_score(answer: str, expected: str) -> bool:
+    if _gaia_number(expected) is not None:
+        return _gaia_number(answer) == _gaia_number(expected)
+    if any(ch in expected for ch in ",;"):
+        want = re.split(r"[,;]", expected)
+        got = re.split(r"[,;]", answer)
+        if len(want) != len(got):
+            return False
+        for w, g in zip(want, got, strict=True):
+            w_num = _gaia_number(w)
+            if w_num is not None:
+                if _gaia_number(g) != w_num:
+                    return False
+            elif _gaia_str(g, remove_punct=False) != _gaia_str(w, remove_punct=False):
+                return False
+        return True
+    return _gaia_str(answer) == _gaia_str(expected)
 
 
 JUDGE_PROMPT = """\

@@ -20,7 +20,7 @@ def _row(name: str, m: Metrics) -> str:
     return (
         f"| {name} | {m.passed}/{attempted} | {_pct(m.success_rate)} | {m.errors} | {m.skipped} "
         f"| {_num(m.cost_usd_mean, '${:.4f}')} | {_num(m.steps_mean, '{:.1f}')} "
-        f"| {_num(m.wall_s_mean, '{:.1f}s')} |"
+        f"| {_num(m.wall_s_mean, '{:.1f}s')} | {m.tool_calls} | {_pct(m.tool_error_rate)} |"
     )
 
 
@@ -31,10 +31,12 @@ def to_markdown(report: EvalReport) -> str:
         f"- runner: `{report.runner}` · agent {report.agent_version}",
         f"- tool groups available: {', '.join(report.available_groups) or 'none'}",
         f"- total cost: ${report.overall.cost_usd_total:.4f}"
-        f" (+ ${report.judge_cost_usd:.4f} judging)",
+        f" (+ ${report.judge_cost_usd:.4f} judging);"
+        f" at paid list prices: ${report.overall.list_cost_usd_total:.4f}",
         "",
-        "| category | passed | success | errors | skipped | cost/task | steps | wall |",
-        "|---|---|---|---|---|---|---|---|",
+        "| category | passed | success | errors | skipped | cost/task | steps | wall "
+        "| tool calls | tool errors |",
+        "|---|---|---|---|---|---|---|---|---|---|",
         *(_row(c, m) for c, m in report.by_category.items()),
         _row("**overall**", report.overall),
         "",
