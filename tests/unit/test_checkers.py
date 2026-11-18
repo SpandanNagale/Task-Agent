@@ -59,6 +59,9 @@ async def test_llm_judge_pass_and_fail() -> None:
     task = _judge_task()
     assert (await check(task, "drops", make_gateway("x", judge="good\n**PASS**"))).passed
     assert not (await check(task, "drops", make_gateway("x", judge="bad\nFAIL"))).passed
+    # verdict on the same line as the reasoning (seen from gpt-oss-120b)
+    assert (await check(task, "drops", make_gateway("x", judge="Under 60 words. PASS."))).passed
+    assert not (await check(task, "drops", make_gateway("x", judge="no PASS here. FAIL"))).passed
 
 
 async def test_empty_answer_fails_without_calling_judge() -> None:

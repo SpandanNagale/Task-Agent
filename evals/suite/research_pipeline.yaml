@@ -1,0 +1,47 @@
+# In-depth research through the research-pipeline MCP server (group: research). Runs take
+# several minutes on a local GPU, so tasks carry a 30-minute budget.
+tasks:
+  - id: rpipe-001
+    category: research
+    prompt: >-
+      Write a short research brief on the main techniques used to reduce hallucinations in
+      large language models. Cite your sources.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS if the brief names at least two distinct techniques (for example retrieval-
+        augmented generation, fine-tuning or RLHF, self-consistency or verification, grounding
+        with citations, constrained decoding) AND cites at least two sources (URLs or named
+        papers/publications). FAIL if it has no sources or says it could not do the research.
+    requires: [research]
+    tags: [research-pipeline]
+    budget: { max_wall_s: 1800 }
+
+  - id: rpipe-002
+    category: research
+    prompt: >-
+      Is intermittent fasting more effective for weight loss than ordinary daily calorie
+      restriction? Research it and say where the evidence disagrees. Cite sources.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS if the answer says the evidence shows broadly similar weight loss, or is mixed or
+        inconclusive, AND cites at least two sources. FAIL if it states intermittent fasting
+        is clearly superior without caveats, has no sources, or says it could not do the research.
+    requires: [research]
+    tags: [research-pipeline, contradictions]
+    budget: { max_wall_s: 1800 }
+
+  - id: rpipe-003
+    category: research
+    prompt: >-
+      Research the James Webb Space Telescope: when it launched and where in space it
+      operates. Cite sources.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS if the answer says it launched in December 2021 (25 December 2021) and operates
+        near the Sun-Earth L2 Lagrange point, with at least one cited source. FAIL otherwise.
+    requires: [research]
+    tags: [research-pipeline]
+    budget: { max_wall_s: 1800 }

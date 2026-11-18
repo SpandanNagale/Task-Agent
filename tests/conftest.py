@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -9,6 +11,12 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from task_agent.config import Settings
 from task_agent.models import ModelGateway, parse_gateway_config
 from task_agent.observability.tracing import setup_tracing
+
+# Unit tests never start the real MCP servers in config/mcp.yaml (they are whole agents).
+os.environ["TASK_AGENT_MCP_CONFIG"] = "tests/no-mcp-servers.yaml"
+# ...and never read or write the real memory/skills database.
+os.environ["TASK_AGENT_MEMORY_DB"] = str(Path(tempfile.mkdtemp()) / "memory.db")
+os.environ["TASK_AGENT_API_DB"] = str(Path(tempfile.mkdtemp()) / "api.db")
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK_MODELS = ROOT / "config" / "models.mock.yaml"

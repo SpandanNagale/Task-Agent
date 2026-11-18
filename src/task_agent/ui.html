@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Agent</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #667085; --line: #e3e6eb;
+  --accent: #2f6fed; --ok: #1a7f4b; --bad: #c4322b; --warn: #b26a00; --code: #f1f3f6;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --panel: #191d23; --ink: #e6e9ee; --muted: #98a2b3; --line: #2a3039;
+    --accent: #6c9bff; --ok: #4cc38a; --bad: #ff6b61; --warn: #f0b44c; --code: #20252d;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+  display: flex; align-items: baseline; gap: 12px; }
+header h1 { font-size: 16px; margin: 0; }
+header span { color: var(--muted); font-size: 13px; }
+.layout { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 49px); }
+aside { border-right: 1px solid var(--line); background: var(--panel); padding: 16px;
+  display: flex; flex-direction: column; gap: 16px; }
+main { padding: 20px 24px; min-width: 0; }
+textarea, input, select, button { font: inherit; color: inherit; }
+textarea, input, select { width: 100%; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px; }
+textarea { resize: vertical; }
+.row { display: flex; gap: 8px; }
+button { border: 1px solid var(--line); background: var(--panel); border-radius: 6px;
+  padding: 7px 12px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+.tasks { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.tasks li { padding: 8px; border-radius: 6px; cursor: pointer; display: grid; gap: 2px; }
+.tasks li:hover, .tasks li.sel { background: var(--bg); }
+.tasks .p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tasks .m { font-size: 12px; color: var(--muted); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px;
+  background: var(--muted); }
+.s-running .dot, .dot.s-running { background: var(--accent); }
+.s-waiting_approval .dot, .dot.s-waiting_approval { background: var(--warn); }
+.s-succeeded .dot, .dot.s-succeeded { background: var(--ok); }
+.s-failed .dot, .s-budget_exceeded .dot, .dot.s-failed, .dot.s-budget_exceeded { background: var(--bad); }
+h2 { font-size: 18px; margin: 0 0 8px; overflow-wrap: anywhere; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+  margin: 20px 0 8px; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 4px 10px; font-size: 13px; }
+.stat b { font-variant-numeric: tabular-nums; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px; margin-bottom: 8px; }
+.card.approval { border-color: var(--warn); }
+.card.answer { border-color: var(--ok); white-space: pre-wrap; overflow-wrap: anywhere; }
+.card.error { border-color: var(--bad); color: var(--bad); }
+.banner { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.steps { display: grid; gap: 6px; }
+.step { display: grid; grid-template-columns: 70px 100px 1fr; gap: 8px; align-items: start; }
+.step .id { font-family: ui-monospace, monospace; }
+.step .role { color: var(--muted); }
+.timeline .ev { border-left: 2px solid var(--line); padding: 2px 0 10px 12px; }
+.ev .h { font-size: 12px; color: var(--muted); }
+.ev .h b { color: var(--ink); }
+.ev.err .h b { color: var(--bad); }
+.txt { white-space: pre-wrap; overflow-wrap: anywhere; }
+pre { background: var(--code); border-radius: 6px; padding: 8px; margin: 4px 0 0;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; max-height: 320px; overflow: auto; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.empty { color: var(--muted); margin-top: 40px; text-align: center; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  aside { border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 16px; }
+  .step { grid-template-columns: 1fr; gap: 0; }
+}
+</style>
+</head>
+<body>
+<header><h1>Task Agent</h1><span>local · approvals and side effects stay on your machine</span></header>
+<div class="layout">
+  <aside>
+    <form id="new">
+      <label for="prompt">Task</label>
+      <textarea id="prompt" rows="5" placeholder="What should the agent do?" required></textarea>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1"><label for="runner">Runner</label>
+          <select id="runner"><option value="baseline">baseline</option>
+          <option value="orchestrator">orchestrator</option></select></div>
+        <div style="width:90px"><label for="steps">Max steps</label>
+          <input id="steps" type="number" min="1" max="60" value="20"></div>
+      </div>
+      <button class="primary" style="margin-top:10px;width:100%">Run task</button>
+    </form>
+    <div><h3 style="margin-top:0">Tasks</h3><ul class="tasks" id="tasks"></ul></div>
+  </aside>
+  <main id="view"><p class="empty">Start a task, or pick one on the left.</p></main>
+</div>
+<script>
+"use strict";
+// Everything from the agent (tool output, page text) is untrusted: it is only ever set with
+// textContent, never innerHTML.
+const $ = (id) => document.getElementById(id);
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined && text !== null) n.textContent = text;
+  return n;
+}
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) });
+  if (!r.ok) throw new Error((await r.text()) || r.statusText);
+  return r.json();
+}
+const money = (v) => "$" + (v || 0).toFixed(4);
+
+let current = null, source = null;
+
+async function refreshList() {
+  let list = [];
+  try { list = await (await fetch("/api/tasks")).json(); } catch { return; }
+  const ul = $("tasks");
+  ul.replaceChildren(...list.map((t) => {
+    const li = el("li", "s-" + t.status + (t.task_id === current ? " sel" : ""));
+    const p = el("div", "p"); p.append(el("span", "dot"), t.prompt);
+    li.append(p, el("div", "m", `${t.runner} · ${t.status} · ${t.steps} steps · ${money(t.cost_usd)}`));
+    li.onclick = () => open(t.task_id);
+    return li;
+  }));
+  if (!list.length) ul.append(el("li", "m", "No tasks yet."));
+}
+
+$("new").onsubmit = async (e) => {
+  e.preventDefault();
+  const prompt = $("prompt").value.trim();
+  if (!prompt) return;
+  try {
+    const r = await post("/api/tasks", { prompt, runner: $("runner").value,
+      max_steps: Number($("steps").value) || 20 });
+    $("prompt").value = "";
+    open(r.task_id);
+    refreshList();
+  } catch (err) { alertCard(String(err)); }
+};
+
+function alertCard(msg) { $("view").prepend(el("div", "card error", msg)); }
+
+function open(id) {
+  if (source) source.close();
+  current = id;
+  const v = $("view");
+  v.replaceChildren();
+  const ui = {
+    title: el("h2"), stats: el("div", "stats"), banner: el("div", "banner"),
+    approvals: el("div"), planBox: el("div"), plan: el("div", "steps"), answer: el("div"),
+    timeline: el("div", "timeline"), steps: {}, t0: null,
+  };
+  const head = el("h3", null, "Plan"); ui.planBox.append(head, ui.plan); ui.planBox.hidden = true;
+  v.append(ui.title, ui.stats, ui.banner, ui.approvals, ui.answer, ui.planBox,
+    el("h3", null, "Activity"), ui.timeline);
+  setStats(ui, { status: "running" });
+  source = new EventSource(`/api/tasks/${id}/events`);
+  source.onmessage = (m) => handle(ui, JSON.parse(m.data));
+  source.onerror = () => { if (source.readyState === EventSource.CLOSED) source = null; };
+  refreshList();
+}
+
+function setStats(ui, s) {
+  Object.assign(ui, { st: { ...(ui.st || {}), ...s } });
+  const st = ui.st, u = st.usage || {};
+  const chips = [
+    ["status", st.status], ["runner", st.runner || "…"], ["steps", st.steps ?? 0],
+    ["tokens", (u.prompt_tokens || 0) + (u.completion_tokens || 0)],
+    ["cost", money(u.cost_usd)], ["at list price", money(u.list_cost_usd)],
+  ];
+  if (st.wall_s !== undefined) chips.push(["time", st.wall_s.toFixed(1) + "s"]);
+  ui.stats.replaceChildren(...chips.map(([k, val]) => {
+    const c = el("span", "stat"); c.append(k + " ", el("b", null, String(val)));
+    if (k === "status") c.prepend(el("span", "dot s-" + val));
+    return c;
+  }));
+}
+
+function addEvent(ui, head, body, isErr, details) {
+  const ev = el("div", "ev" + (isErr ? " err" : ""));
+  const h = el("div", "h"); h.append(el("b", null, head[0]), " " + (head[1] || ""));
+  ev.append(h);
+  if (body) ev.append(el("div", "txt", body));
+  for (const [label, text] of details || []) {
+    if (!text) continue;
+    const d = el("details"); d.append(el("summary", null, label), el("pre", null, text));
+    ev.append(d);
+  }
+  ui.timeline.append(ev);
+}
+
+function renderPlan(ui, steps) {
+  ui.planBox.hidden = false;
+  ui.plan.replaceChildren();
+  for (const s of steps) {
+    const row = el("div", "step");
+    const id = el("span", "id"); const dot = el("span", "dot s-" + mapStatus(s.status));
+    id.append(dot, s.id);
+    const goal = el("div"); goal.append(el("div", null, s.goal));
+    if (s.depends_on && s.depends_on.length) goal.append(el("div", "m banner", "after " + s.depends_on.join(", ")));
+    row.append(id, el("span", "role", s.role), goal);
+    ui.plan.append(row);
+    ui.steps[s.id] = { dot, goal };
+  }
+}
+const mapStatus = (s) => ({ pending: "", running: "running", done: "succeeded", failed: "failed" }[s] ?? s);
+
+function approvalCard(ui, ev) {
+  const card = el("div", "card approval"); card.id = "ap-" + ev.id;
+  card.append(el("div", null, `Approval needed: ${ev.tool} (${ev.side_effect})`));
+  card.append(el("div", "banner", ev.description));
+  const args = el("textarea"); args.rows = 6; args.value = JSON.stringify(ev.args, null, 2);
+  args.style.marginTop = "8px"; args.style.fontFamily = "ui-monospace, monospace";
+  const reason = el("input"); reason.placeholder = "Reason (optional, for reject)";
+  reason.style.marginTop = "6px";
+  const send = async (body) => {
+    card.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    try { await post(`/api/tasks/${current}/approvals/${ev.id}`, body); }
+    catch (err) { card.append(el("div", "banner", String(err))); }
+  };
+  const ok = el("button", "primary", "Approve");
+  ok.onclick = () => {
+    let edited;
+    try { edited = JSON.parse(args.value); } catch { card.append(el("div", "banner", "Arguments are not valid JSON.")); return; }
+    const same = JSON.stringify(edited) === JSON.stringify(ev.args);
+    send(same ? { verdict: "approve" } : { verdict: "edit", args: edited });
+  };
+  const no = el("button", "danger", "Reject");
+  no.onclick = () => send({ verdict: "reject", reason: reason.value });
+  const row = el("div", "row"); row.style.marginTop = "8px"; row.append(ok, no);
+  card.append(args, reason, row);
+  ui.approvals.append(card);
+}
+
+function handle(ui, ev) {
+  switch (ev.type) {
+    case "start":
+      ui.title.textContent = ev.prompt; setStats(ui, { runner: ev.runner }); break;
+    case "model":
+      setStats(ui, { usage: ev.usage, steps: ev.step });
+      if (ev.text && ev.text.trim()) addEvent(ui, [ev.agent, "· " + ev.model], ev.text);
+      break;
+    case "tool":
+      addEvent(ui, [ev.agent, "→ " + ev.name + (ev.error ? " (error)" : "")], null, ev.error,
+        [["arguments", ev.args], ["output", ev.output]]);
+      break;
+    case "plan": renderPlan(ui, ev.steps); break;
+    case "step": {
+      const s = ui.steps[ev.id];
+      if (s) {
+        s.dot.className = "dot s-" + mapStatus(ev.status);
+        if (ev.result) { const d = el("details"); d.append(el("summary", null, "result"), el("pre", null, ev.result)); s.goal.append(d); }
+      }
+      addEvent(ui, ["step " + ev.id, ev.status]);
+      break;
+    }
+    case "skill":
+      ui.banner.textContent = ev.used ? `Reusing a saved skill: “${ev.used}”`
+        : (ui.banner.textContent ? ui.banner.textContent + " · " : "") + "Saved as a skill for next time.";
+      break;
+    case "approval":
+      setStats(ui, { status: "waiting_approval" }); approvalCard(ui, ev);
+      addEvent(ui, ["approval", "requested for " + ev.tool]); break;
+    case "approval_done": {
+      const c = document.getElementById("ap-" + ev.id); if (c) c.remove();
+      setStats(ui, { status: "running" }); addEvent(ui, ["approval", ev.verdict]); break;
+    }
+    case "done": {
+      setStats(ui, { status: ev.status, usage: ev.usage || ui.st.usage, steps: ev.steps ?? ui.st.steps, wall_s: ev.wall_s });
+      ui.approvals.replaceChildren();
+      const ok = ev.status === "succeeded";
+      ui.answer.replaceChildren(el("h3", null, ok ? "Answer" : "Result"),
+        el("div", "card " + (ok ? "answer" : "error"), ok ? (ev.output || "(empty)") : `${ev.status}: ${ev.error || ""}`));
+      if (source) { source.close(); source = null; }
+      refreshList();
+      break;
+    }
+  }
+}
+
+refreshList();
+setInterval(refreshList, 3000);
+</script>
+</body>
+</html>

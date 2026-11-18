@@ -1,0 +1,32 @@
+# Reading document images through the DocIntel MCP server (group: files). The images and
+# answers come from DocIntel's synthetic set (data/synthetic, ground_truth/*.json).
+tasks:
+  - id: docintel-001
+    category: data_code
+    prompt: >-
+      What is the seller's GSTIN on the receipt image {files}/docintel_retail_receipt.png?
+      Answer with the GSTIN only.
+    checker: { type: contains, all_of: ["33DCTOS4025A9ZM"] }
+    requires: [files]
+    tags: [docintel]
+    budget: { max_wall_s: 600 }
+
+  - id: docintel-002
+    category: data_code
+    prompt: >-
+      What is the grand total (including GST) on the invoice image
+      {files}/docintel_gst_invoice.png? Answer with the number only.
+    checker: { type: numeric, expected: 1412.39 }
+    requires: [files]
+    tags: [docintel]
+    budget: { max_wall_s: 600 }
+
+  - id: docintel-003
+    category: data_code
+    prompt: >-
+      What is the document number and the date on the delivery challan image
+      {files}/docintel_delivery_challan.png?
+    checker: { type: contains, all_of: ["89354", "2026"] }
+    requires: [files]
+    tags: [docintel]
+    budget: { max_wall_s: 600 }

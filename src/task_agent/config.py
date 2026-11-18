@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+from dotenv import load_dotenv
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -31,6 +32,14 @@ class Settings(BaseSettings):
     models_config: Path = Path("config/models.yaml")
     # Approval rules per tool and side-effect level.
     policy_file: Path = Path("policies/default.yaml")
+    # Orchestrator graph checkpoints (resume after a crash). Postgres comes with phase 6.
+    checkpoint_db: Path = Path(".task-agent/checkpoints.db")
+    # Skills, remembered facts and indexed knowledge files (SQLite FTS5).
+    memory_db: Path = Path(".task-agent/memory.db")
+    # /v1 API keys (hashed), daily spend and idempotency records.
+    api_db: Path = Path(".task-agent/api.db")
+    # Reuse and save skills on `run` and in the UI (evals opt in with --skills).
+    skills: bool = True
 
     # Tracing. Langfuse is used as an OpenTelemetry backend, so any OTLP collector works too.
     tracing: Literal["auto", "langfuse", "otlp", "console", "off"] = "auto"
@@ -70,6 +79,17 @@ class Settings(BaseSettings):
     )
 
     # Largest tool output the model sees, in characters. Longer outputs are truncated.
+    # Browser (Playwright Chromium). Headed mode shows the window, for watching/debugging.
+    # A profile dir keeps logins you made by hand across tasks; unset = clean per task.
+    browser_enabled: bool = True
+    browser_headless: bool = True
+    browser_profile_dir: Path | None = None
+    # browser_look (screenshot -> vision model). Off = DOM-only browsing (an ablation).
+    browser_vision: bool = True
+
+    # MCP servers whose tools join the registry (your own agents, wrapped). Missing = none.
+    mcp_config: Path = Path("config/mcp.yaml")
+
     tool_output_max_chars: int = Field(default=12_000, ge=500)
 
     @field_validator("composio_tools", mode="before")
@@ -83,4 +103,8 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    # Also export .env to os.environ: models.yaml resolves ${VAR} from the environment, so
+    # without this, provider keys kept in .env would never reach the model gateway.
+    # The real environment still wins (override=False), matching pydantic-settings.
+    load_dotenv(".env", override=False)
     return Settings()

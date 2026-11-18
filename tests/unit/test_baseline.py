@@ -142,3 +142,26 @@ async def test_bad_tool_arguments_go_back_to_the_model() -> None:
     assert result.output == "4"
     assert result.tools.calls == 2 and result.tools.errors == 1
     assert "not valid JSON" in model.calls[1]["messages"][-1]["content"]
+
+
+def test_older_large_tool_outputs_are_shortened() -> None:
+    from task_agent.core.baseline import (
+        KEEP_FULL_OUTPUTS,
+        SHRUNK_NOTE,
+        SHRUNK_TO,
+        compact_tool_outputs,
+    )
+
+    big = "x" * 5_000
+    msgs = [{"role": "user", "content": big}] + [
+        {"role": "tool", "tool_call_id": str(i), "content": big} for i in range(4)
+    ]
+    msgs.append({"role": "tool", "tool_call_id": "small", "content": "tiny"})
+    compact_tool_outputs(msgs)
+    tool = [m["content"] for m in msgs if m["role"] == "tool"]
+    shortened = tool[:-KEEP_FULL_OUTPUTS]
+    assert all(c == "x" * SHRUNK_TO + SHRUNK_NOTE for c in shortened)
+    assert tool[-2:] == [big, "tiny"]  # the newest stay whole
+    assert msgs[0]["content"] == big  # only tool results are touched
+    compact_tool_outputs(msgs)  # idempotent
+    assert [m["content"] for m in msgs if m["role"] == "tool"] == tool

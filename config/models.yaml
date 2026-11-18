@@ -57,6 +57,9 @@ roles:
       - name: ollama-local
         model: ollama_chat/${WORKER_LOCAL_MODEL:-qwen3:14b}
         api_base: ${OLLAMA_BASE_URL}
+        # Ollama's default context is ~2k tokens and it silently drops the START of longer
+        # prompts (the system prompt and the task). 12k keeps qwen3:14b ~90% on a 12 GB GPU.
+        num_ctx: 12288
       - name: groq-gpt-oss-20b
         free_tier: true
         model: groq/${WORKER_GROQ_MODEL:-openai/gpt-oss-20b}
@@ -73,6 +76,20 @@ roles:
       - name: gemini-flash-lite
         free_tier: true
         model: gemini/${WORKER_GEMINI_MODEL:-gemini-2.5-flash-lite}
+        api_key: ${GEMINI_API_KEY}
+
+  vision:
+    description: Reads screenshots when a page's text view is not enough (browser_look).
+    timeout_s: 240
+    params: { temperature: 0 }
+    chain:
+      - name: ollama-local-qwen2.5vl
+        model: ollama_chat/${VISION_LOCAL_MODEL:-qwen2.5vl:7b}
+        api_base: ${OLLAMA_BASE_URL}
+        num_ctx: 8192
+      - name: gemini-flash-vision
+        free_tier: true
+        model: gemini/${VISION_GEMINI_MODEL:-gemini-2.5-flash}
         api_key: ${GEMINI_API_KEY}
 
   router:

@@ -177,8 +177,9 @@ async def check(task: EvalTask, answer: str | None, gateway: ModelGateway) -> Ch
         temperature=0,
     )
     text = (completion.content or "").strip()
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    verdict = lines[-1].upper().strip("*. ") if lines else ""
+    # The last uppercase PASS/FAIL wins: judges often put it at the end of the reasoning line.
+    verdicts = re.findall(r"\b(PASS|FAIL)\b", text)
+    verdict = verdicts[-1] if verdicts else ""
     return CheckResult(
         passed=verdict == "PASS", detail=text[:500], judge_cost_usd=completion.usage.cost_usd
     )

@@ -24,3 +24,6 @@ evals/reports/runs/
 .idea/
 .vscode/
 .DS_Store
+
+# orchestrator checkpoints
+.task-agent/

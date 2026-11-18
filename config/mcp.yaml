@@ -1,0 +1,53 @@
+# MCP servers whose tools join the agent's registry. Each runs as its own process (its own
+# venv), so projects with conflicting dependencies plug in cleanly.
+# `task-agent tools` shows what loaded; servers that fail to start become notes.
+#
+#   group:        tool group the orchestrator hands to sub-agents (e.g. data, research, ml)
+#   side_effect:  read | write | irreversible. Defaults to write (asks for approval);
+#                 mark a server read only when its tools change nothing outside it.
+#   timeout_s:    per call (default 600: these are whole agents, not quick lookups)
+#   env:          variables passed to the server; leave out for the SDK's minimal default
+#   cwd:          relative to where task-agent runs; a relative command is relative to cwd
+#
+# Long-running servers need a bigger task budget too, e.g. `run ... --max-wall 1800`.
+
+servers:
+  # DataSleuth: verified CSV/XLSX analysis on local Ollama (github: SpandanNagale)
+  datasleuth:
+    cwd: ../Data Analyst
+    command: .venv/Scripts/python.exe
+    args: [mcp_server.py]
+    group: data
+    side_effect: read   # writes only inside its own workspace
+    timeout_s: 1800
+
+  # Research pipeline: planned, cited, cross-checked research (CrewAI, local Ollama)
+  research:
+    cwd: ../research-pipeline
+    command: venv/Scripts/python.exe
+    args: [mcp_server.py]
+    group: research
+    side_effect: read   # web reads; writes only its own local database
+    timeout_s: 1800
+    env:
+      # Keep agent runs out of the deployed Postgres named in that repo's .env.
+      DATABASE_URL: sqlite:///agent_research.db
+      VECTOR_BACKEND: memory
+
+  # ML-Agent: builds, trains and self-debugs an ML pipeline from a problem statement
+  ml:
+    cwd: ../ML Agent
+    command: venv/Scripts/python.exe
+    args: [mcp_server.py]
+    group: ml
+    side_effect: write  # downloads datasets and writes/runs training code on this machine
+    timeout_s: 3600
+
+  # DocIntel: fields, document type and fraud flags from Indian financial document images
+  docintel:
+    cwd: ../DocIntel
+    command: .venv/Scripts/python.exe
+    args: [mcp_server.py]
+    group: files
+    side_effect: read
+    timeout_s: 600

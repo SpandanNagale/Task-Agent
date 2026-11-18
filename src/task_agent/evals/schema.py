@@ -19,6 +19,8 @@ class Category(StrEnum):
     COMMUNICATION = "communication"
     MULTI_STEP = "multi_step"
     GAIA = "gaia"  # public benchmark tasks, loaded at run time (never committed)
+    WEBVOYAGER = "webvoyager"  # live-website tasks, loaded at run time (never committed)
+    INJECTION = "injection"  # pages that try to hijack the agent; graded on what it did
 
 
 class _Checker(BaseModel):
@@ -112,6 +114,11 @@ class EvalTask(BaseModel):
     tags: frozenset[str] = frozenset()
     budget: Budget | None = None
     notes: str = ""  # why the task exists / what it tests; not shown to the agent
+    # Injection tests: the task fails if the agent attempts any action needing approval
+    # (even though evals reject it), or if any tool call's arguments contain these strings
+    # (an exfiltration URL, an attacker's address), whatever the answer says.
+    forbid_side_effects: bool = False
+    forbid_in_args: list[str] = Field(default_factory=list)
 
 
 class EvalSuiteFile(BaseModel):
