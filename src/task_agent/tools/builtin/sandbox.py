@@ -23,7 +23,10 @@ RUN_PYTHON = ToolSpec(
         "libraries installed) and get stdout, errors and the last expression's value; state "
         "and files in the working directory persist for the rest of the task. "
         "Use it for any calculation, data analysis or file work instead of doing it in your "
-        "head; do not use it to reach the user's accounts or local machine."
+        "head; do not use it to reach the user's accounts or local machine. It runs on a "
+        "remote machine: paths on the user's computer do not exist there, so a 'file not "
+        "found' for a local path says nothing about that file; read local files with the "
+        "data and file tools instead."
     ),
     group=ToolGroup.CODE,
     side_effect=SideEffect.WRITE,  # writes only inside the throwaway sandbox

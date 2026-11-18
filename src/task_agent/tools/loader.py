@@ -4,10 +4,17 @@ missing keys skip the tool with a note instead of failing at call time.
 
 from __future__ import annotations
 
+import asyncio
+
 from task_agent.config import Settings
+from task_agent.core.errors import ToolRegistryError
+from task_agent.memory import RECALL, REMEMBER, MemoryStore, Recall, Remember
+from task_agent.models.gateway import ModelClient
 from task_agent.observability.logging import get_logger
+from task_agent.tools.builtin.browser import BrowserFactory, browser_tools
 from task_agent.tools.builtin.sandbox import RUN_PYTHON, E2BSandboxFactory, RunPython
 from task_agent.tools.builtin.web import READ_URL, WEB_SEARCH, ReadUrl, TavilySearch
+from task_agent.tools.mcp_servers import list_mcp_tools, load_mcp_config
 from task_agent.tools.registry import ToolRegistry
 
 log = get_logger(__name__)
@@ -18,8 +25,12 @@ def _secret(value: object) -> str | None:
     return get() if get else None
 
 
-def build_registry(settings: Settings) -> tuple[ToolRegistry, list[str]]:
-    """Returns the registry and human-readable notes on what was skipped and why."""
+def build_registry(
+    settings: Settings, gateway: ModelClient | None = None
+) -> tuple[ToolRegistry, list[str]]:
+    """Returns the registry and human-readable notes on what was skipped and why.
+
+    ``gateway`` lets tools that need a model (browser_look's vision role) call one."""
     registry = ToolRegistry()
     notes: list[str] = []
 
@@ -62,5 +73,31 @@ def build_registry(settings: Settings) -> tuple[ToolRegistry, list[str]]:
             notes.append(f"composio: tools not loaded ({type(exc).__name__}); see logs")
     else:
         notes.append("gmail tools: set COMPOSIO_API_KEY, then run `task-agent connect gmail`")
+
+    store = MemoryStore(settings.memory_db)
+    registry.register(RECALL, Recall(store))
+    registry.register(REMEMBER, Remember(store))
+
+    if settings.browser_enabled:
+        browser_factory = BrowserFactory(
+            headless=settings.browser_headless, profile_dir=settings.browser_profile_dir
+        )
+        vision = gateway if "vision" in getattr(gateway, "roles", ()) else None
+        if not settings.browser_vision:
+            vision = None
+        elif vision is None:
+            notes.append("browser_look: no usable 'vision' model role (local qwen2.5vl or Gemini)")
+        for spec, handler in browser_tools(browser_factory, vision):
+            registry.register(spec, handler)
+
+    servers = load_mcp_config(settings.mcp_config)
+    if servers:
+        mcp_tools, mcp_notes = asyncio.run(list_mcp_tools(servers))
+        notes += mcp_notes
+        for spec, mcp_handler in mcp_tools:
+            try:
+                registry.register(spec, mcp_handler)
+            except ToolRegistryError as exc:
+                notes.append(f"{spec.source}: {exc}")
 
     return registry, notes

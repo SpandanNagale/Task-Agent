@@ -8,9 +8,11 @@ The goal is to show how much of a standard agent benchmark **local models plus g
 orchestration** can solve on a 12 GB consumer GPU, and at what cost per task. Success rates
 and cost per task will be published here as the phases land.
 
-> **Status: Phase 1 (single-agent baseline).** One tool-calling agent with web search, page
-> reading, a cloud code sandbox and Gmail, behind an approval gate. It runs entirely on
-> free tiers. See the [roadmap](docs/ROADMAP.md).
+> **Status: Phase 4 done (skills, memory, local knowledge, web UI); Phase 5 (local benchmarks) next.** A planner splits the task into steps and runs them as
+> sub-agents in parallel (`--runner orchestrator`), next to the Phase 1 single-agent
+> baseline. Tools: web search, page reading, a cloud code sandbox and Gmail, behind an
+> approval gate. Runs on free tiers or fully on a local GPU. See the
+> [roadmap](docs/ROADMAP.md).
 
 ## Design principles
 
@@ -39,6 +41,17 @@ uv run task-agent run "What is 6 x 7?" --models config/models.mock.yaml
 uv run task-agent eval --models config/models.mock.yaml
 ```
 
+Fully local on a GPU with [Ollama](https://ollama.com) (`ollama pull qwen3:14b`, then set
+`OLLAMA_BASE_URL=http://localhost:11434` in `.env`):
+
+```bash
+uv run task-agent run "..." --role worker                       # baseline agent
+uv run task-agent run "..." --runner orchestrator --role worker  # planner + sub-agents
+uv run task-agent resume TASK_ID                                 # continue an interrupted run
+uv run task-agent ui                 # web UI at http://127.0.0.1:8765: live plan, approvals, cost
+uv run task-agent index ~/notes      # index text files for the agent's recall tool
+```
+
 With real models and tools. Every service below has a free tier, and nothing runs on
 your machine except the CLI:
 
@@ -52,6 +65,22 @@ uv run task-agent run "Find the arXiv id of 'Attention Is All You Need'"
 
 uv run task-agent connect gmail   # one-time OAuth through Composio
 uv run task-agent run "Draft an email to me summarising today's unread mail"
+```
+
+### HTTP API
+
+`/v1` for programs: API keys with scopes and per-key limits, live progress as server-sent
+events, approvals over HTTP, RFC 9457 errors and idempotent task creation. OpenAPI docs at
+`/docs`.
+
+```bash
+uv run task-agent keys create my-app --scope tasks:read --scope tasks:write --group search
+uv run task-agent serve --port 8000
+
+curl -X POST localhost:8000/v1/tasks -H "Authorization: Bearer $KEY" \
+     -H "Idempotency-Key: 1" -H "Content-Type: application/json" \
+     -d '{"prompt": "What is 17 * 23 + 4?"}'               # 202 {"task_id": ...}
+curl -N localhost:8000/v1/tasks/$ID/events -H "Authorization: Bearer $KEY"  # SSE until done
 ```
 
 Anything that writes to the outside world (sending, posting, deleting) stops and shows
@@ -129,6 +158,9 @@ src/task_agent/
   tools/           the ToolSpec contract and registry
   observability/   OpenTelemetry tracing, structured logs, secret redaction
   evals/           suite schema, checkers, runner, reports
+  memory.py        skills, remembered facts, local knowledge (SQLite FTS5)
+  ui.py, ui.html   local web UI (Starlette + server-sent events)
+  api.py           /v1 HTTP API: keys, scopes, limits, idempotency (FastAPI)
   cli.py           `task-agent` command
 config/            model role chains (real + offline mock)
 evals/suite/       internal eval tasks (YAML)

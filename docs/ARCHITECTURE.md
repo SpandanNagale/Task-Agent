@@ -47,8 +47,8 @@ Phases replace the implementation:
 | Phase | Runner | What it does |
 |---|---|---|
 | 0 | `DirectRunner` | one model call, no tools; proves the plumbing and sets a "no tools" floor |
-| 1 | `BaselineRunner` | single tool-calling agent loop with approval gate (current) |
-| 2 | `OrchestratorRunner` | LangGraph planner/replanner with sub-agents, kept only where it beats the baseline |
+| 1 | `BaselineRunner` | single tool-calling agent loop with approval gate |
+| 2 | `OrchestratorRunner` | LangGraph planner/replanner with sub-agents, kept only where it beats the baseline (current) |
 
 Runners are stateless across tasks: everything a run needs comes in the request or from
 injected services. That keeps any worker able to run any task.
@@ -89,6 +89,94 @@ Guards:
   repeat stops the task with `LoopDetected`.
 - An empty reply gets one nudge, then the task fails.
 - Per-task resources (the sandbox) are always torn down in `finally`.
+
+### `core/orchestrator.py`: the Phase 2 agent
+
+A LangGraph graph: `plan -> execute -> review -> execute ... -> END`.
+
+- **plan**: the `planner` role answers directly, or returns JSON steps, each with a role,
+  a self-contained goal, a success check and `depends_on`. One corrective retry on bad JSON.
+- **execute**: every step whose dependencies are done runs now, in parallel (capped), as a
+  sub-agent: the same `tool_loop` as the baseline, on the `worker` role, with a role
+  prompt, an 8-step budget and only its role's tool groups. A sub-agent sees its brief and
+  its dependencies' results (wrapped as `<step_result>` data), never the conversation.
+- **review**: when a wave has a failure or nothing is left to run, the planner finishes or
+  appends new steps. After `max_replans` it must answer.
+- Preset roles: researcher (search), coder (code, files), communicator (comms), writer (no
+  tools). Any other role name is a runtime role: the planner writes its instructions and
+  tool groups.
+- Budgets stay task-wide: every planner and sub-agent call counts as a step.
+- State is checkpointed per task id in `.task-agent/checkpoints.db` (SQLite).
+  `task-agent resume TASK_ID` continues an interrupted task without re-running finished
+  steps (its budget starts fresh). Postgres replaces SQLite with the phase 6 workers.
+
+### `tools/builtin/browser.py`: the browser (Phase 3)
+
+Playwright Chromium exposed as ordinary tools in the `browser` group, so browsing runs in
+the same loop, approval gate, budgets and traces as every other tool (no separate browsing
+agent with its own model calls):
+
+- `browser_open`, `browser_snapshot` (read): every call returns a snapshot of URL, title,
+  numbered interactive elements (`[7] textbox "Customer name" value=""`, dropdown options,
+  checked state) and the page text. Numbers are re-assigned on every snapshot.
+- `browser_click`, `browser_type`, `browser_select` (write, ask by default): each returns
+  the page afterwards, so the model verifies every action by reading its result.
+- `browser_look` (read): screenshot of the page, answered by the `vision` model role
+  (qwen2.5vl locally, the model JARVIS uses). The fallback for canvas, charts and layout.
+- One browser context per task, closed when the task ends, or one persistent profile
+  (`TASK_AGENT_BROWSER_PROFILE_DIR`) for sites you log into by hand. The agent never types
+  into password fields, and a CAPTCHA or bot check in a snapshot tells it to stop and hand
+  over. `TASK_AGENT_BROWSER_HEADLESS=false` shows the window.
+
+Small local models have small context windows, so `tool_loop` keeps only the newest two
+tool results whole and cuts older large ones to their start (`compact_tool_outputs`), and
+local Ollama models get an explicit `num_ctx` (Ollama's default silently drops the start of
+long prompts).
+
+### `memory.py`: skills, memory and knowledge (Phase 4)
+
+One SQLite FTS5 table (`.task-agent/memory.db`), BM25 keyword search with stemming, three
+kinds of note:
+
+- **skill**: after a successful baseline task, the tool calls that worked (failed and
+  rejected calls dropped) are saved under the task's prompt. Before a task, a skill whose
+  prompt shares at least 60% of its content words is added to the context as a hint to make
+  the same calls and skip exploring. A longer rerun never replaces a shorter recipe. Gave-up
+  answers are not saved. `run` and the UI use skills; evals only with `--skills`.
+- **memory**: facts the user asked to keep, written by the `remember` tool (write side
+  effect, so it asks: an injected page must not plant lasting memories).
+- **knowledge**: chunks of local text files from `task-agent index PATH`.
+
+`recall` (read) searches memory and knowledge. Keyword search misses paraphrases; Mem0 or
+sqlite-vec can replace `MemoryStore.search` when that matters.
+
+### `core/events.py` and `ui.py`: live events and the web UI (Phase 4)
+
+Runners emit events (`model` with cumulative usage, `tool`, `plan`, `step`, `skill`,
+`answer`) into a sink held in a context variable, so nothing is wired through call
+signatures and parallel sub-agents report into their own task. The CLI binds no sink.
+
+`task-agent ui` serves one static page and a small JSON API on 127.0.0.1: start a task,
+stream its events (server-sent events, replayed from the start for late viewers), and
+answer approvals (`WebApprover` parks the tool call on a future until the click). Only JSON
+POSTs and localhost Host headers are accepted (no cross-site form posts, no DNS rebinding);
+agent output is rendered as text only. Tasks live in memory until the server stops.
+
+### `api.py`: the `/v1` HTTP API (Phase 6)
+
+`task-agent serve` is the same task lifecycle (`TaskRecord.start`/`follow`, shared with the
+UI) behind API keys. A key is `ta_<id>_<secret>`; only its SHA-256 is stored, with its
+scopes (`tasks:read`, `tasks:write`, `approvals:write`), an optional tool-group allow list
+(a request can narrow it, never widen it) and its limits: requests per minute, tasks running
+at once, tasks and USD per UTC day. Per-task budgets are clamped to server ceilings and to
+the key's remaining daily spend. A key sees only its own tasks: anything else is a 404.
+
+Keys without `approvals:write` get `RejectAll`; with it, approvals are answered over HTTP
+and rejected after `approval_timeout_s` so an abandoned task cannot hold a worker.
+`Idempotency-Key` makes `POST /v1/tasks` safe to retry (same key and body: the first task;
+different body: 422). Errors are RFC 9457 `application/problem+json`, with `Retry-After` on
+429s. Keys, spend and idempotency records are SQLite; tasks and rate windows are in process
+memory until the Redis queue lands.
 
 ### `core/tool_executor.py` and `core/approval.py`: the only path to a side effect
 

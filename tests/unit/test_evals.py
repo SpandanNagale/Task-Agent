@@ -10,7 +10,8 @@ from tests.conftest import SUITE, make_gateway
 def test_shipped_suite_is_valid() -> None:
     tasks = load_suite(SUITE)
     assert len(tasks) >= 20
-    by_cat = {c: [t for t in tasks if t.category is c] for c in Category if c is not Category.GAIA}
+    runtime_only = {Category.GAIA, Category.WEBVOYAGER}  # benchmarks loaded at run time
+    by_cat = {c: [t for t in tasks if t.category is c] for c in Category if c not in runtime_only}
     assert all(by_cat.values()), "every category needs tasks"
     # Phase 0 gate needs tasks that run with no tools at all.
     assert any(not t.requires for t in tasks)
@@ -63,3 +64,28 @@ async def test_groups_unlock_tasks() -> None:
     gw = make_gateway("FINAL ANSWER: 76127")
     report = await run_eval(tasks, DirectRunner(gw), gw, available_groups=["code"])
     assert report.results[0].outcome is Outcome.PASSED
+
+
+def test_summary_counts_tool_calls_errors_and_approvals() -> None:
+    from task_agent.core.types import RunResult, RunVersions, TaskStatus, ToolStats, utcnow
+    from task_agent.evals.runner import TaskOutcome, summarise
+
+    def outcome(calls: int, errors: int, asked: int, rejected: int) -> TaskOutcome:
+        run = RunResult(
+            task_id="t",
+            status=TaskStatus.SUCCEEDED,
+            tools=ToolStats(
+                calls=calls,
+                errors=errors,
+                approvals_requested=asked,
+                approvals_rejected=rejected,
+            ),
+            versions=RunVersions(agent_version="0", runner="x", prompt_version="x"),
+            started_at=utcnow(),
+            finished_at=utcnow(),
+        )
+        return TaskOutcome(task_id="t", category="research", outcome=Outcome.PASSED, run=run)
+
+    m = summarise([outcome(3, 1, 1, 1), outcome(1, 0, 0, 0)])
+    assert (m.tool_calls, m.tool_error_rate) == (4, 0.25)
+    assert (m.approvals_requested, m.approvals_rejected) == (1, 1)

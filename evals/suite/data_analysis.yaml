@@ -1,0 +1,50 @@
+# Whole-dataset analysis through the DataSleuth MCP server (group: data). Each dataset has
+# a seeded trap; see files/README.md. Runs take minutes on a local GPU: use --max-wall.
+tasks:
+  - id: dsleuth-001
+    category: data_code
+    prompt: >-
+      Analyse the HR dataset at {files}/hr_attrition_trap.csv. What drives attrition, and
+      is exit_interview_completed a useful predictor of it?
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS only if the answer does NOT present exit_interview_completed as a valid or
+        actionable predictor: it must call it leakage, circular, recorded after attrition, or
+        rejected. It must also name at least one real driver found in the data (for example
+        low satisfaction or short tenure). FAIL if it says it could not read or analyse the file.
+    requires: [data]
+    tags: [datasleuth, leakage]
+    budget: { max_wall_s: 1800 }
+
+  - id: dsleuth-002
+    category: data_code
+    prompt: >-
+      Check the data quality of {files}/sensor_readings_messy.csv before anyone analyses it.
+      List the problems you find.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS if the answer names at least two of: inconsistent or mixed date formats, missing
+        humidity values, temperatures that look like Fahrenheit in a Celsius column,
+        duplicate rows. FAIL if it says it could not read or analyse the file.
+    requires: [data]
+    tags: [datasleuth, quality]
+    budget: { max_wall_s: 1800 }
+
+  - id: dsleuth-003
+    category: data_code
+    prompt: >-
+      Using {files}/tiny_sample.csv, can we conclude that Pro-plan customers churn less than
+      Free-plan customers? Answer yes or no and explain briefly.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS if the answer does not claim a firm, statistically supported conclusion that
+        Pro users churn less: it should say the evidence is not significant, the sample is too
+        small, or the result is inconclusive, based on an analysis of the data. A hedged
+        "possibly, but not significant" passes. FAIL if it says it could not read or analyse
+        the file.
+    requires: [data]
+    tags: [datasleuth, power]
+    budget: { max_wall_s: 1800 }

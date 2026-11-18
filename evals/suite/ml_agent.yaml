@@ -1,0 +1,49 @@
+# Building ML pipelines through the ML-Agent MCP server (group: ml). It writes and runs
+# training code on this machine, so its tool asks for approval: run these with
+#   task-agent eval -t ml-agent --allow build_ml_pipeline
+# Runs take many minutes on a local GPU, so tasks carry a one-hour budget.
+tasks:
+  - id: mlagent-001
+    category: data_code
+    prompt: >-
+      Build a model that predicts whether an employee leaves (the attrited column) from
+      {files}/hr_attrition_trap.csv, and report how well it does.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS only if the answer flags exit_interview_completed as target leakage (or a
+        leakage audit warning/block on it), instead of reporting a near-perfect model built on
+        it. FAIL if it reports high accuracy without mentioning that leakage, or says the
+        tool could not be run.
+    requires: [ml]
+    tags: [ml-agent, leakage]
+    budget: { max_wall_s: 3600 }
+
+  - id: mlagent-002
+    category: data_code
+    prompt: >-
+      Train a model that predicts the churned column from {files}/tiny_sample.csv and report
+      its evaluation metrics and where the training script was saved.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS if the answer reports at least one evaluation metric value (accuracy, F1, AUC,
+        precision or recall) for a trained model and gives the path of a pipeline/training
+        script. FAIL if it reports no metric or says the training failed or could not run.
+    requires: [ml]
+    tags: [ml-agent]
+    budget: { max_wall_s: 3600 }
+
+  - id: mlagent-003
+    category: data_code
+    prompt: >-
+      Build a classifier for the iris flower species dataset and report its test accuracy.
+    checker:
+      type: llm_judge
+      rubric: >-
+        PASS if the answer reports a test accuracy (or similar metric) of at least 0.8; a bare
+        number such as "0.97" or "1.0" counts. FAIL if no metric is reported, it is below 0.8,
+        or the answer says it could not train a model.
+    requires: [ml]
+    tags: [ml-agent]
+    budget: { max_wall_s: 3600 }

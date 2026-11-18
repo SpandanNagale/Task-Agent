@@ -17,6 +17,12 @@ tools:
   # so the agent may run it freely. Its effects die with the sandbox.
   run_python: allow
 
+  # Browser: opening and reading pages (and browser_look) are read-only and run freely.
+  # Clicking, typing and choosing options can submit forms on real sites, so they ask
+  # (side-effect level "write"). For eval runs, opt in per run with `eval --allow browser_click`.
+  # Allow them here only if you browse in a clean profile and accept that risk:
+  # browser_click: allow
+
   # Drafts sit in your Gmail drafts folder until you send them yourself.
   gmail_create_email_draft: ask
 
